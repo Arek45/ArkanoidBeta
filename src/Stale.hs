@@ -1,18 +1,27 @@
 module Stale where
 import Graphics.Gloss.Interface.Pure.Game
 
---ZMIANA!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!------
 --ogolne
+szerokoscOkna :: Int
+szerokoscOkna = 1600
+
+wysokoscOkna :: Int 
+wysokoscOkna = 900
 
 trybWyswietlania :: Display
-trybWyswietlania = InWindow "Arkanoid" (1024, 600) (0, 0)
---InWindow "ARKANOID" (1600, 900) (100, 100)
+trybWyswietlania = InWindow "Arkanoid" (szerokoscOkna, wysokoscOkna) (0, 0)
 
-wysokoscObszaruGry :: Float
-wysokoscObszaruGry = 600
+szerokoscOknaFloat :: Float
+szerokoscOknaFloat = fromIntegral szerokoscOkna
+
+wysokoscOknaFloat :: Float 
+wysokoscOknaFloat = fromIntegral wysokoscOkna
 
 szerokoscObszaruGry :: Float
-szerokoscObszaruGry = 400
+szerokoscObszaruGry = szerokoscOknaFloat / 1600 * 400  
+
+wysokoscObszaruGry :: Float
+wysokoscObszaruGry = wysokoscOknaFloat / 900  * 600 
 
 kolorTla :: Color
 kolorTla = black
@@ -20,14 +29,8 @@ kolorTla = black
 wspolczynnikPredkosci :: Float
 wspolczynnikPredkosci = 65
 
-zakresLosowosci :: (Float, Float)
-zakresLosowosci = (-2 * wspolczynnikPredkosci, 2 * wspolczynnikPredkosci)
-
-fps :: Int
+fps :: Int --liczba krokow symulacji wykonanych w ciagu sekundy
 fps = 120
-
-sciezkaDoWynikow :: String
-sciezkaDoWynikow = "ZapisWynikow/wyniki.txt"
 
 
 --deska
@@ -42,7 +45,7 @@ wyjsciowaPozycjaDeski :: (Float, Float)
 wyjsciowaPozycjaDeski = (0, -250)
 
 predkoscDeski :: Float
-predkoscDeski = 200
+predkoscDeski = 400
 
 zakresKataUderzeniaDeski :: (Float, Float)
 zakresKataUderzeniaDeski = (-4.3 * wspolczynnikPredkosci, 4.3 * wspolczynnikPredkosci)
@@ -55,12 +58,6 @@ promienPilki = 5
 
 wyjsciowaPozycjaPilki :: Point
 wyjsciowaPozycjaPilki = (0,-100)
-
-stalaPredkosciPilki :: Float
-stalaPredkosciPilki = 4.5 * wspolczynnikPredkosci
-
-wyjsciowaPredkoscPilki :: Vector
-wyjsciowaPredkoscPilki = (0,-stalaPredkosciPilki/fromIntegral fps) --wektor predkosci pilki na starcie
 
 
 --klocek

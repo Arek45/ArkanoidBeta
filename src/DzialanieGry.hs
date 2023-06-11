@@ -2,16 +2,22 @@
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 module DzialanieGry where
 
-import System.Directory ( createDirectoryIfMissing, doesFileExist )
-import Data.Maybe (isNothing)
 import Graphics.Gloss.Interface.Pure.Game
 
 import Stale
 import TypyDanych
 
+stalaPredkosciPilki :: StopienTrudnosci -> Float
+stalaPredkosciPilki Latwy = 5.5 * wspolczynnikPredkosci
+stalaPredkosciPilki Sredni = 7.5 * wspolczynnikPredkosci
+stalaPredkosciPilki Trudny = 9.5 * wspolczynnikPredkosci
+stalaPredkosciPilki _ = 0
+
+wyjsciowaPredkoscPilki :: StopienTrudnosci -> Vector
+wyjsciowaPredkoscPilki st = (0,-1 * stalaPredkosciPilki st/fromIntegral fps) --wektor predkosci pilki na starcie
 
 ileZostaloKlockowNaPlanszy :: PlanszaKlockow -> Int
-ileZostaloKlockowNaPlanszy (PlanszaKlockow [] jakiesUderzenie) = 0
+ileZostaloKlockowNaPlanszy (PlanszaKlockow [] _) = 0
 ileZostaloKlockowNaPlanszy (PlanszaKlockow (rzad:xs) jakiesUderzenie) = ileZostaloKlockowWRzedzie rzad + ileZostaloKlockowNaPlanszy (PlanszaKlockow xs jakiesUderzenie)
     where
         ileZostaloKlockowWRzedzie :: RzadKlockow -> Int
@@ -59,9 +65,6 @@ ruchDeskiWPrawo s@StanGry{..}
     | WcisnietyKlawiszPrawy `elem` wcisnieteKlawisze 
       = s{aktualnaPozycjaDeski = (min ((szerokoscObszaruGry - dlugoscDeski)/2) (fst aktualnaPozycjaDeski + (predkoscDeski/fromIntegral fps)), snd wyjsciowaPozycjaDeski)}
     | otherwise = s
-
-
-
 
 
 --polozenie aktualne pilki to (x,y)
@@ -157,7 +160,7 @@ odbicieOdDeski (x, y) stan@StanGry{..}
     | otherwise = DeskaUderzenie False (0,0) --zamiast (0,0) mogloby byc cokolwiek 
         where
             nowaDeltaX = ((x - fst aktualnaPozycjaDeski)/(dlugoscDeski/2) * snd zakresKataUderzeniaDeski) / fromIntegral fps
-            nowaDeltaY = sqrt ((stalaPredkosciPilki * stalaPredkosciPilki) - (nowaDeltaX * fromIntegral fps * nowaDeltaX * fromIntegral fps)) / fromIntegral fps
+            nowaDeltaY = sqrt ((stalaPredkosciPilki stopienTrudnosci * stalaPredkosciPilki stopienTrudnosci) - (nowaDeltaX * fromIntegral fps * nowaDeltaX * fromIntegral fps)) / fromIntegral fps
             --   sqrt (nowaDeltaX^2 + nowaDeltaY^2)
             --   sqrt(nowaDeltaX^2  +  (stalaPredkosciPilki^2 - nowaDeltaX^2 * (fromIntegral fps)^2 )/ (fromIntegral fps)^2 ))
             -- = sqrt(nowaDeltaX^2  +  (stalaPredkosciPilki^2 - nowaDeltaX^2 * (fromIntegral fps)^2 )/ (fromIntegral fps)^2 ))

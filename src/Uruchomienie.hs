@@ -1,10 +1,12 @@
 {-# LANGUAGE RecordWildCards #-}
+
 module Uruchomienie where
 
 import System.Exit
 import Data.Time.Clock
-import Data.List
+import Data.List ( delete )
 import Graphics.Gloss.Interface.IO.Game
+import Graphics.Gloss.Juicy
 
 import Stale
 import TypyDanych
@@ -12,12 +14,42 @@ import DzialanieGry
 import GenerowanieObiektow
 import ObslugaRekordow
 
+--zamiana napisu ze stopniem trudnosci na typ StopienTrudnosci
+stopienTrudnosciPole :: String -> StopienTrudnosci
+stopienTrudnosciPole stopienNapis = case stopienNapis of
+    "latwy" -> Latwy
+    "sredni" -> Sredni
+    "trudny" -> Trudny
+    _ -> BrakStopniaTrudnosci
+
+stanWejsciaDoMenuPierwszyRaz :: StanGry
+stanWejsciaDoMenuPierwszyRaz = StanGry "" 0 0 "" 0 BrakStopniaTrudnosci (secondsToNominalDiffTime 0) Nieukonczona False Menu wyjsciowaPozycjaPilki (0,0) wyjsciowaPozycjaDeski (PlanszaKlockow [] BrakUderzenia) [NieWcisnietyZadenKlawisz] (-1)
+
+stanWejsciaDoMenuKolejnyRaz :: StanGry -> StanGry
+stanWejsciaDoMenuKolejnyRaz stan = StanGry (nickGracza stan) 0 0 "" 0 BrakStopniaTrudnosci (secondsToNominalDiffTime 0) Nieukonczona False Menu wyjsciowaPozycjaPilki (0,0) wyjsciowaPozycjaDeski (PlanszaKlockow [] BrakUderzenia) [NieWcisnietyZadenKlawisz] (-1)
 
 
-stanPoczatkowyGry :: String -> Widok -> IO StanGry
-stanPoczatkowyGry nick widok = do
-    pb <- najlepszyRekordGracza nick
-    return $ StanGry nick pb (secondsToNominalDiffTime 0) Nieukonczona False widok wyjsciowaPozycjaPilki wyjsciowaPredkoscPilki wyjsciowaPozycjaDeski (generujPoziom 1) [NieWcisnietyZadenKlawisz] (ileZostaloKlockowNaPlanszy (generujPoziom 1))
+--stan nowej gry po wyjsciu z ekranow menu
+stanNowejGry :: StanGry ->  IO StanGry
+stanNowejGry stan@StanGry{..}  = case nazwaPlikuZWynikami of
+    "" -> return stan
+    _ -> do
+            let ileUciac = length "ZapisWynikow/wyniki"
+                nrPoziomu = read $ take 1 $ drop ileUciac nazwaPlikuZWynikami
+                stTrudnosci  = stopienTrudnosciPole $ takeWhile (/= '.') $ drop (ileUciac+1) nazwaPlikuZWynikami
+            () <- utworzPlikDoZapisuWynikow nazwaPlikuZWynikami
+            pb <- najlepszyRekordGracza nickGracza nazwaPlikuZWynikami
+            rekord <- najlepszyRekord nazwaPlikuZWynikami 
+            return $ stan{osobistyRekordGracza = pb, rekordGlobalny = rekord, numerPoziomu = nrPoziomu, stopienTrudnosci = stTrudnosci, czasGry = secondsToNominalDiffTime 0, aktualnyWidok = Poziom, aktualnaPlanszaKlockow = generujPoziom nrPoziomu, liczbaPozostalychKlockowNaPlanszy = ileZostaloKlockowNaPlanszy $ generujPoziom nrPoziomu, aktualnyWektorPredkosciPilki = wyjsciowaPredkoscPilki stTrudnosci, wcisnieteKlawisze = [NieWcisnietyZadenKlawisz]}
+
+stanZrestartowanejGry :: StanGry ->  IO StanGry
+stanZrestartowanejGry stan@StanGry{..}   = case nazwaPlikuZWynikami of
+    "" -> return stan
+    _ -> do
+            let ileUciac = length "ZapisWynikow/wyniki"
+                nrPoziomu = read $ take 1 $ drop ileUciac nazwaPlikuZWynikami
+                stTrudnosci  = stopienTrudnosciPole $ takeWhile (/= '.') $ drop (ileUciac+1) nazwaPlikuZWynikami
+            return $ stan{czasGry = secondsToNominalDiffTime 0, statusGry = Nieukonczona, czyGraJestZapisana = False, aktualnyWidok = Poziom, aktualnaPozycjaPilki = wyjsciowaPozycjaPilki, aktualnyWektorPredkosciPilki = wyjsciowaPredkoscPilki stTrudnosci, aktualnaPozycjaDeski = wyjsciowaPozycjaDeski, aktualnaPlanszaKlockow = generujPoziom nrPoziomu, liczbaPozostalychKlockowNaPlanszy = ileZostaloKlockowNaPlanszy $ generujPoziom nrPoziomu, wcisnieteKlawisze = [NieWcisnietyZadenKlawisz]}
 
 --zmiana stanu gry po kliknieciu
 iteracja :: Float -> StanGry -> IO StanGry
@@ -27,15 +59,16 @@ iteracja s stan@StanGry{..}
         return stan
     | aktualnyWidok /= Poziom = return stan --jesli nie gramy, to nic nie zmienia sie na ekranie (tryb Poziom jest w momencie grania, Wygranej lub Przegranej)
     | statusGry == Wygrana = do
-        zapiszWynik stan
-        let wynNaj = if osobistyRekordGracza == 0 then nominalDiffTimeToSeconds czasGry else min osobistyRekordGracza (nominalDiffTimeToSeconds czasGry)
-        return $ StanGry nickGracza wynNaj czasGry Wygrana True KomunikatOWygranej aktualnaPozycjaPilki (0,0) aktualnaPozycjaDeski aktualnaPlanszaKlockow [NieWcisnietyZadenKlawisz] 0
-    | statusGry == Przegrana = return $ StanGry nickGracza osobistyRekordGracza czasGry Przegrana czyGraJestZapisana KomunikatOPrzegranej aktualnaPozycjaPilki (0,0) aktualnaPozycjaDeski aktualnaPlanszaKlockow [NieWcisnietyZadenKlawisz] 0
+        zapiszWynik stan nazwaPlikuZWynikami
+        let nowyPB = if osobistyRekordGracza == 0 then nominalDiffTimeToSeconds czasGry else min osobistyRekordGracza (nominalDiffTimeToSeconds czasGry)
+        let nowyRekord = if rekordGlobalny == 0 then nominalDiffTimeToSeconds czasGry else min rekordGlobalny (nominalDiffTimeToSeconds czasGry)
+        return $ StanGry nickGracza nowyPB nowyRekord nazwaPlikuZWynikami numerPoziomu stopienTrudnosci czasGry Wygrana True KomunikatOWygranej aktualnaPozycjaPilki (0,0) aktualnaPozycjaDeski aktualnaPlanszaKlockow [NieWcisnietyZadenKlawisz] 0
+    | statusGry == Przegrana = return $ StanGry nickGracza osobistyRekordGracza rekordGlobalny nazwaPlikuZWynikami numerPoziomu stopienTrudnosci czasGry Przegrana czyGraJestZapisana KomunikatOPrzegranej aktualnaPozycjaPilki (0,0) aktualnaPozycjaDeski aktualnaPlanszaKlockow [NieWcisnietyZadenKlawisz] 0
     --przypadek otherwise to sytuacja w trakcie rozgrywki
-    | otherwise = return $ StanGry nickGracza osobistyRekordGracza (czasGry + secondsToNominalDiffTime (realToFrac s)) nowyStatus czyGraJestZapisana aktualnyWidok nowaPozycjaPilki nowyWektorPredkosciPilki nowaPozycjaDeski nowaPlansza wcisnieteKlawisze nowaLiczbaPozostalychKlockow
+    | otherwise = return $ StanGry nickGracza osobistyRekordGracza rekordGlobalny nazwaPlikuZWynikami numerPoziomu stopienTrudnosci (czasGry + secondsToNominalDiffTime (realToFrac s)) nowyStatus czyGraJestZapisana aktualnyWidok nowaPozycjaPilki nowyWektorPredkosciPilki nowaPozycjaDeski nowaPlansza wcisnieteKlawisze nowaLiczbaPozostalychKlockow
         where
             nowaPozycjaPilki = przemieszczeniePilki aktualnaPozycjaPilki aktualnyWektorPredkosciPilki
-            nowaPlansza = planszaKlockowPoUderzeniu nowaPozycjaPilki (klocki aktualnaPlanszaKlockow) --klocki aktualnaPlanszaKlockow to lista rzedow klockow z planszy
+            nowaPlansza = planszaKlockowPoUderzeniu nowaPozycjaPilki (klocki aktualnaPlanszaKlockow) 
             nowaLiczbaPozostalychKlockow = ileZostaloKlockowNaPlanszy nowaPlansza
             nowaPozycjaDeski = ruchDeski stan
             ostatnieuderzenie = ostatnieUderzenie nowaPlansza
@@ -48,61 +81,60 @@ iteracja s stan@StanGry{..}
                        | nowaLiczbaPozostalychKlockow == 0 = Wygrana
                        | otherwise = Nieukonczona
 
-{-
-textWithStyle :: Picture
-textWithStyle = scale 1.5 1.5 $ textInFont "Arial" "Hello, World!"
 
-textInFont :: String -> String -> Picture
-textInFont fontName content = text content
-    where
-        style = TextStyle (makeFont fontName) solidLine (Just solidLine)
-        makeFont name = Font name FontWeightNormal FontSlantNormal
-        solidLine = solid 1
--}
 
-narysujGre :: StanGry -> IO Picture
-narysujGre stan@StanGry{..} = do
+narysujGre :: Picture -> Picture -> StanGry ->  IO Picture
+narysujGre tloGra tloMenu stan@StanGry{..} = do
     --do wyswietlenia czasu gry
     let czasDoWysietleniaNaEkranie = formatujCzasDoWyswietlenia (show (nominalDiffTimeToSeconds czasGry))
-        czasObraz = scale 0.2 0.2 $ translate (szerokoscObszaruGry * 4) (-100) $ color yellow $ text czasDoWysietleniaNaEkranie
+        czasObraz = scale 0.2 0.2 $ translate (-szerokoscObszaruGry * 7) 700 $ color white $ text czasDoWysietleniaNaEkranie
     --do wyswietlenia rekordu globalnego w menu gry
-    rekord <- najlepszyRekord
-    let rekordDoWyswietleniaNaEkranie = if rekord == 0 then "Brak rekordu" else "Rekord: " ++ formatujCzasDoWyswietlenia (show rekord) 
-        rekordObraz = scale  0.2 0.2 $ translate (szerokoscObszaruGry * 4) (-500) $ color yellow $ text rekordDoWyswietleniaNaEkranie
+    let rekordDoWyswietleniaNaEkranie = if rekordGlobalny == 0 then "Brak rekordu" else "Rekord: " ++ formatujCzasDoWyswietlenia (show rekordGlobalny)
+        rekordObraz = scale  0.2 0.2 $ translate (-szerokoscObszaruGry * 7) (-1100) $ color white $ text rekordDoWyswietleniaNaEkranie
     --do wyswietlenia nowego PB gracza w menu wygranej
         aktualnyCzasGry = nominalDiffTimeToSeconds czasGry
-        nowyRekordDoWyswietleniaNaEkranie = if aktualnyCzasGry <= osobistyRekordGracza then if aktualnyCzasGry <= rekord then "Nowy rekord!" else "Nowy osobisty rekord!" else ""
-        nowyRekordObraz = scale 0.2 0.2 $ translate (- szerokoscObszaruGry / 4 - 10) (-60) $ color yellow $ text nowyRekordDoWyswietleniaNaEkranie
-    --do wyswietlenia wynikow w widoku Wyniki
-    wynikText <- wczytajWynikiZPliku sciezkaDoWynikow
-    let ostatnie30Wynikow = drop 1 $ reverse $ drop (length (podzielWynikiZPliku wynikText) - 30) $ podzielWynikiZPliku wynikText
-        ostatnie30WynikowObrazy = map (scale 0.5 0.5 . color white . text) ostatnie30Wynikow
-        pierwsze10WynikowObraz = translate (-960 + 130) 0 $ pictures $ wyswietlWRzedach (540 - 200) 80 $ take 10 ostatnie30WynikowObrazy
-        drugie10WynikowObraz = translate (-250) 0 $ pictures $ wyswietlWRzedach (540 - 200) 80 $ take 10 $ drop 10 ostatnie30WynikowObrazy
-        trzecie10WynikowObraz = translate (960 - 500) 0 $ pictures $ wyswietlWRzedach (540 - 200) 80 $ take 10 $ drop 20 ostatnie30WynikowObrazy
-        wynikTextPic = pictures [pierwsze10WynikowObraz, drugie10WynikowObraz, trzecie10WynikowObraz]
-
+        nowyRekordDoWyswietleniaNaEkranie
+          | aktualnyCzasGry <= osobistyRekordGracza && aktualnyCzasGry > rekordGlobalny = "Nowy osobisty rekord!                     " 
+          | aktualnyCzasGry <= rekordGlobalny && aktualnyCzasGry <= osobistyRekordGracza = "  Nowy rekord!" 
+          | otherwise = ""
+        nowyRekordObraz = scale 0.2 0.2 $ translate (- szerokoscObszaruGry / 4 - 550) (-250) $ color white $ text nowyRekordDoWyswietleniaNaEkranie
+        --tlo gry, menu
+        tloGraObraz =  scale 1 1 $ translate 0 0 tloGra
+        tloMenuObraz = scale 1 1 $ translate 0 0 tloMenu
     case aktualnyWidok of
-        EkranStartowy -> return (pictures [startInfoGraObraz, startInfoRozpocznijObraz])
-        Menu -> return (pictures [menuObraz, menuInfoSterowanieObraz, menuInfoPauzaObraz, menuInfoRestartObraz, menuInfoWyjscieObraz, menuInfoRozpocznijObraz])
-        Poziom -> return (pictures [rekordObraz, pbObraz, czasObraz, nickGraczaObraz, pilkaObraz, infoKontynuujObraz, planszaObraz, deskaObraz, scianyKoloroweObraz, infoMenuObraz, infoPauzaObraz, infoWyjscieObraz,  infoRestartObraz])
-        Pauza -> return (pictures [rekordObraz, pbObraz, czasObraz, nickGraczaObraz, pauzaObraz, infoKontynuujObraz, pilkaObraz, planszaObraz, deskaObraz, scianyKoloroweObraz, infoMenuObraz, infoPauzaObraz, infoWyjscieObraz, infoRestartObraz])
-        KomunikatOWygranej -> return (pictures [nowyRekordObraz, rekordObraz, pbObraz, czasObraz, nickGraczaObraz, wygranaObraz, infoKontynuujObraz, deskaObraz, scianyKoloroweObraz, infoMenuObraz, infoPauzaObraz, infoWyjscieObraz, infoRestartObraz])
-        KomunikatOPrzegranej -> return (pictures [rekordObraz, pbObraz, czasObraz, nickGraczaObraz, przegranaObraz, infoKontynuujObraz, pilkaObraz, deskaObraz, scianyKoloroweObraz,  infoMenuObraz, infoPauzaObraz, infoWyjscieObraz, infoRestartObraz])
-        NajlepszeWyniki -> return (pictures[wynikiTytul, wynikiRamka, wynikTextPic, wynikiPomoc])
-        _ -> return (pictures [pilkaObraz, infoKontynuujObraz, planszaObraz, deskaObraz, scianyKoloroweObraz, infoMenuObraz, infoPauzaObraz, infoWyjscieObraz, infoRestartObraz])
+        Menu -> return (pictures [tloMenuObraz, menuObraz, menuInfoRozpocznijObraz])
+        WprowadzanieNicku -> return (pictures [tloMenuObraz, wprowadzanieNickuInfo1Obraz, wWprowadzenieNickuNickObraz, wprowadzenieNickuInfo2Obraz])
+        WyborPoziomu -> return (pictures [tloMenuObraz, wyborPoziomuObraz, wyborPoziomuPierwszegoObraz, wyborPoziomuDrugiegoObraz, wyborPoziomuTrzeciegoObraz])
+        WyborStopniaTrudnosci -> return (pictures [tloMenuObraz, wyborStopniaTrudnosciObraz, wyborStopniaTrudnosciLatwyObraz, wyborStopniaTrudnosciSredniObraz, wyborStopniaTrudnosciTrudnyObraz])
+        Instrukcja -> return (pictures [tloMenuObraz, instrukcjaInfoInstrukcjaObraz, instrukcjaInfoSterowanieObraz, instrukcjaInfoRozpocznijObraz])
+        Poziom -> return (pictures [tloGraObraz, infoStopienTrudnosciObraz, infoPoziomObraz, rekordObraz, pbObraz, czasObraz, nickGraczaPoziomObraz, pilkaObraz, planszaObraz, deskaObraz, scianyKoloroweObraz, infoMenuObraz, infoPauzaObraz, infoWyjscieObraz,  infoRestartObraz])
+        Pauza -> return (pictures [tloGraObraz, infoStopienTrudnosciObraz, infoPoziomObraz, pauzaInfoObraz, rekordObraz, pbObraz, czasObraz, nickGraczaPoziomObraz, pauzaObraz, pilkaObraz, planszaObraz, deskaObraz, scianyKoloroweObraz, infoMenuObraz, infoPauzaObraz, infoWyjscieObraz, infoRestartObraz])
+        KomunikatOWygranej -> return (pictures [tloGraObraz, infoStopienTrudnosciObraz, infoPoziomObraz, nowyRekordObraz, rekordObraz, pbObraz, czasObraz, nickGraczaPoziomObraz, wygranaObraz, deskaObraz, scianyKoloroweObraz, infoMenuObraz, infoPauzaObraz, infoWyjscieObraz, infoRestartObraz])
+        KomunikatOPrzegranej -> return (pictures [tloGraObraz, infoStopienTrudnosciObraz, infoPoziomObraz, rekordObraz, pbObraz, czasObraz, nickGraczaPoziomObraz, przegranaObraz, pilkaObraz, deskaObraz, scianyKoloroweObraz,  infoMenuObraz, infoPauzaObraz, infoWyjscieObraz, infoRestartObraz])
+        _ -> return (pictures [pilkaObraz, planszaObraz, deskaObraz, scianyKoloroweObraz, infoMenuObraz, infoPauzaObraz, infoWyjscieObraz, infoRestartObraz])
     where
-        --teksty pomocy w ekranie startowym
-        startInfoGraObraz = scale 0.33 0.35 $ translate 0 110 $ color white $ text "Arkanoid"
-        startInfoRozpocznijObraz = scale 0.33 0.35 $ translate (-szerokoscObszaruGry * 1.5) (-100) $ color white $ text "Nacisnij Enter by zaczac"
         --teksty pomocy w menu glownym
-        menuObraz = scale 0.45 0.45 $ translate (-szerokoscObszaruGry * 1.7) 370 $ color yellow $ text "Menu"
-        menuInfoSterowanieObraz = scale 0.45 0.45 $ scale 0.70 0.70 $ translate (-szerokoscObszaruGry * 1.6) 300 $ color white $ text "Uzywaj <- oraz ->, by grac"
-        menuInfoPauzaObraz = scale 0.45 0.45 $ scale 0.70 0.70 $ translate (-szerokoscObszaruGry * 1.6) 150 $ color white $ text "Pauza - P"
-        menuInfoRestartObraz = scale 0.45 0.45 $ scale 0.70 0.70 $ translate (-szerokoscObszaruGry * 1.6) 0 $ color white $ text "Restart - R"
-        menuInfoWyjscieObraz = scale 0.45 0.45 $ scale 0.70 0.70 $ translate (-szerokoscObszaruGry * 1.6) (-150) $ color white $ text "Wyjscie Esc"
-        menuInfoRozpocznijObraz = scale 0.45 0.45 $ scale 0.70 0.70 $ translate (-szerokoscObszaruGry * 1.6) (-300) $ color white $ text "Rozpocznij  - Spacja"
-        --wyswietlanie obiektow w menu gry, przegranej i wygranej
+        menuObraz = scale 1 1 $ translate (-480) 240 $ color red $ text "GRA ARKANOID"
+        menuInfoRozpocznijObraz = scale 0.45 0.45 $ scale 0.70 0.70 $ translate (-szerokoscObszaruGry * 2.5) (-550) $ color white $ text "Wcisnij ENTER, aby rozpoczac"
+        --do wsywietlenia elementow w widoku WprowadzenieNicku
+        wprowadzanieNickuInfo1Obraz = scale 0.35 0.35 $ translate (-szerokoscObszaruGry * 1) 300 $ color white $ text "Podaj nick"
+        wWprowadzenieNickuNickObraz = scale 0.35 0.35 $ translate (-szerokoscObszaruGry * 1) (100) $ color yellow $ text nickGracza
+        wprowadzenieNickuInfo2Obraz = scale 0.35 0.35 $ translate (-szerokoscObszaruGry * 2.5) (-550) $ color white $ text "Wcisnij ENTER, aby zatwierdzic"
+        --do wsywietlenia elementow w widoku WyborPoziomu
+        wyborPoziomuObraz = scale 0.35 0.35 $ translate (-szerokoscObszaruGry * 1.3) 300 $ color white $ text "Wybierz Poziom"
+        wyborPoziomuPierwszegoObraz = scale 0.25 0.25 $ translate (-szerokoscObszaruGry * 1.9) 100 $ color white $ text "Poziom 1 - Wcisnij 1"
+        wyborPoziomuDrugiegoObraz = scale 0.25 0.25 $ translate (-szerokoscObszaruGry *1.9) (-100) $ color white $ text "Poziom 2 - Wcisnij 2"
+        wyborPoziomuTrzeciegoObraz = scale 0.25 0.25 $ translate (-szerokoscObszaruGry * 1.9) (-300) $ color white $ text "Poziom 3 - Wcisnij 3"
+        --do wsywietlenia elementow w widoku WyborStopniaTrudnosci        
+        wyborStopniaTrudnosciObraz = scale 0.35 0.35 $ translate (-szerokoscObszaruGry * 2) 300 $ color white $ text "Wybierz stopien trudnosci"
+        wyborStopniaTrudnosciLatwyObraz = scale 0.25 0.25 $ translate (-szerokoscObszaruGry * 1.7) 100 $ color white $ text "Latwy - Wcisnij 1"
+        wyborStopniaTrudnosciSredniObraz = scale 0.25 0.25 $ translate (-szerokoscObszaruGry * 1.7) (-100) $ color white $ text "Sredni - Wcisnij 2"
+        wyborStopniaTrudnosciTrudnyObraz = scale 0.25 0.25 $ translate (-szerokoscObszaruGry * 1.7) (-300) $ color white $ text "Trudny - Wcisnij 3"
+        --do wyswietlenia elementow w widoku Instrukcja
+        instrukcjaInfoInstrukcjaObraz = scale 0.45 0.45 $ scale 0.70 0.70 $ translate (-szerokoscObszaruGry * 3.9) 300 $ color white $ text "Zniszcz wszystkie klocki w jak najkrotszym czasie"
+        instrukcjaInfoSterowanieObraz = scale 0.45 0.45 $ scale 0.70 0.70 $ translate (-szerokoscObszaruGry * 3.3) 100 $ color white $ text "Uzywaj <- oraz ->, by sterowac deska"
+        instrukcjaInfoRozpocznijObraz = scale 0.45 0.45 $ scale 0.70 0.70 $ translate (-szerokoscObszaruGry * 2.2) (-550) $ color white $ text "Wcisnij ENTER, aby zagrac"
+        --wyswietlanie obiektow w widokach Poziom, Pauza, KomunikatOPrzegranej, KomunikatOWygranej
         pilkaObraz = uncurry translate aktualnaPozycjaPilki $ color white (circleSolid promienPilki)
         planszaObraz = stworzPlansze aktualnaPlanszaKlockow
         scianyKoloroweObraz = color red scianyObrazy
@@ -114,33 +146,21 @@ narysujGre stan@StanGry{..} = do
             ]
         deskaObraz = pictures [
             uncurry translate aktualnaPozycjaDeski $ color green (rectangleSolid dlugoscDeski wysokoscDeski)]
-        --do wyswietlenia nicku gracza w menu gry
-        nickGraczaObraz = scale 0.55 0.55 $ translate (szerokoscObszaruGry * 2.5) 100 $ color white $ text nickGracza
-        --do wyswietlenia nowego PB gracza w menu gry
-        pbDowyswietleniaNaEkranie = if osobistyRekordGracza == 0 then "Brak osobistego rekordu" else "Osobisty rekord: " ++ formatujCzasDoWyswietlenia (show osobistyRekordGracza) 
-        pbObraz = scale  0.2 0.2 $ translate (szerokoscObszaruGry * 4) (-300) $ color yellow $ text pbDowyswietleniaNaEkranie
-        --teksty pomocy w menu gry
-        infoMenuObraz = scale 0.2 0.2 $ translate (-szerokoscObszaruGry * 8.8) 150 $ color yellow $ text "Menu - M"
-        infoPauzaObraz = scale  0.2 0.2 $ translate (-szerokoscObszaruGry * 8.8) 0 $ color yellow $ text "Pauza - P"
-        infoRestartObraz = scale  0.2 0.2 $ translate (-szerokoscObszaruGry * 8.8) (-150) $ color yellow $ text "Restart - R"
-        infoWyjscieObraz = scale  0.2 0.2 $ translate (-szerokoscObszaruGry * 8.8) (-300) $ color yellow $ text "Wyjscie Esc"
-        infoKontynuujObraz = scale 0.2 0.2 $ translate (-szerokoscObszaruGry * 8.8) (-450) $ color yellow $ text "Kontynuuj - Spacja"
-        --infoWynikiObraz = scale  0.2 0.2 $ translate (-szerokoscObszaruGry * 8.8) (-600) $ color yellow $ text "Wyniki - V"
+        nickGraczaPoziomObraz = scale 0.25 0.25 $ translate (-szerokoscObszaruGry * 5.6) 800 $ color yellow $ text nickGracza
+        pbDowyswietleniaNaEkranie = if osobistyRekordGracza == 0 then "Brak osobistego rekordu" else "Osobisty rekord: " ++ formatujCzasDoWyswietlenia (show osobistyRekordGracza)
+        pbObraz = scale  0.2 0.2 $ translate (-szerokoscObszaruGry * 7) (-900) $ color white $ text pbDowyswietleniaNaEkranie
+        infoPoziomObraz = scale 0.2 0.2 $ translate (szerokoscObszaruGry * 3.5) (1000) $ color white $ text $ "Poziom: " ++ show numerPoziomu
+        infoStopienTrudnosciObraz = scale  0.2 0.2 $ translate (szerokoscObszaruGry * 3.5) (850) $ color white $ text $ "Stopien trudnosci: " ++ show stopienTrudnosci
+        infoMenuObraz = scale 0.2 0.2 $ translate (szerokoscObszaruGry * 3.5) (150-900) $ color white $ text "Menu glowne - M"
+        infoPauzaObraz = scale  0.2 0.2 $ translate (szerokoscObszaruGry * 3.5) (0-900) $ color white $ text "Pauza - P"
+        infoRestartObraz = scale  0.2 0.2 $ translate (szerokoscObszaruGry * 3.5) (-150-900) $ color white $ text "Restart - R"
+        infoWyjscieObraz = scale  0.2 0.2 $ translate (szerokoscObszaruGry * 3.5) (-300-900) $ color white $ text "Wyjscie - Esc"
         --tekst PAUZA w menu pauzy
-        pauzaObraz = scale 0.35 0.35 $ translate (-szerokoscObszaruGry * 0.67) 0 $ color yellow $ text "PAUZA"
+        pauzaObraz = scale 0.35 0.35 $ translate (-szerokoscObszaruGry * 0.5) 0 $ color white $ text "PAUZA"
+        pauzaInfoObraz = scale 0.15 0.15 $ translate (-szerokoscObszaruGry * 2.1) (-250) $ color white $ text "Wcisnij P aby kontunyowac"
         --komunikaty o wygranej i przegranej w menu wygranej i przegranej
-        wygranaObraz = translate (- szerokoscObszaruGry / 4) 0 $ color yellow $ text "Wygrana!"
-        przegranaObraz = translate (- szerokoscObszaruGry / 3) 0 $ color yellow $ text "Przegrana"
-        --do wyswietlenia elementow widoku Wyniki
-        wynikiTytul = translate (-150) (wysokoscObszaruGry - 150) $ scale 0.8 0.8 $ color white $ text "Wyniki"
-        wynikiRamka = color yellow $ pictures [wynikiRamkaLewa, wynikiRamkaPrawa, wynikiRamkaGorna, wynikiRamkaDolna]
-        wynikiRamkaLewa = translate (-960 + 100) 0 $ line [(0, 540 - 120), (0, -540 + 80)]
-        wynikiRamkaPrawa = translate (960 - 100) 0 $ line [(0, 540 - 120), (0, -540 + 80)]
-        wynikiRamkaGorna = translate 0 (540 - 120) $ line [(-960 + 100, 0), (960 - 100, 0)]
-        wynikiRamkaDolna = translate 0 (-540 + 80) $ line [(-960 + 100, 0), (960 - 100, 0)]
-        wynikiPomoc = scale 0.25 0.25 $ translate (-szerokoscObszaruGry * 8.8) (4 * (wysokoscObszaruGry - 150)) $ color yellow $ text " Nacisnij 'M' - by wlaczyc MENU "
-
-
+        wygranaObraz = scale 0.35 0.35 $ translate (-250) 0 $ color white $ text "Wygrana!"
+        przegranaObraz = scale 0.35 0.35 $ translate (-300) 0 $ color white $ text "Przegrana"
 
 --obsluga przyciskow
 --data Event - Possible input events.
@@ -150,52 +170,47 @@ narysujGre stan@StanGry{..} = do
 --SpecialKey to specjalne klawisze (wszystkie poza literami)
 --delete usuwa pierwsze wystapienie pierwszego argumentu z drugiego argumentu (listy)
 obslugaWejscia :: Event -> StanGry -> IO StanGry
+obslugaWejscia (EventKey (SpecialKey KeyEnter) Down _ _) stan@StanGry{..}
+    | aktualnyWidok == Menu = return (stan {aktualnyWidok = WprowadzanieNicku})
+    | aktualnyWidok == WprowadzanieNicku && nickGracza /= [] = return (stan {aktualnyWidok = WyborPoziomu})
+    | aktualnyWidok == Instrukcja = stanNowejGry stan
+obslugaWejscia (EventKey (SpecialKey KeyEsc) Down _ _) stan@StanGry{..}
+    = return (stan {aktualnyWidok = Wyjscie})
+obslugaWejscia (EventKey (Char '\b') Down _ _ ) stan@StanGry{..}
+    | aktualnyWidok == WprowadzanieNicku && nickGracza /= "" = return stan{nickGracza = init nickGracza}    
 obslugaWejscia (EventKey (SpecialKey key) keyState _ _) stan@StanGry{..}
-    | key == KeySpace && aktualnyWidok == Menu = return (stan {aktualnyWidok = Poziom})
-    | key == KeySpace && aktualnyWidok == Pauza = return (stan {aktualnyWidok = Poziom})
-    | key == KeyEnter && aktualnyWidok == EkranStartowy = return (stan {aktualnyWidok = Menu})
     | key == KeyLeft = return (stan{ wcisnieteKlawisze = if keyState == Down then WcisnietyKlawiszLewy : wcisnieteKlawisze else delete WcisnietyKlawiszLewy wcisnieteKlawisze})
     | key == KeyRight = return (stan{ wcisnieteKlawisze = if keyState == Down then WcisnietyKlawiszPrawy : wcisnieteKlawisze else delete WcisnietyKlawiszPrawy wcisnieteKlawisze})
-    | key == KeyEsc = return (stan { aktualnyWidok = Wyjscie})
     | otherwise = return stan
-obslugaWejscia (EventKey (Char znak) Down _ _ ) stan@StanGry{..}
-    | znak == 'm' = return stan { aktualnyWidok = Menu}
-    | znak == 'p' = return stan { aktualnyWidok = Pauza}
-    | znak == 'r' = stanPoczatkowyGry nickGracza Poziom
-    -- | znak == 'v' = return stan { aktualnyWidok = NajlepszeWyniki}
-    | otherwise = return stan
+obslugaWejscia (EventKey (Char '1') Down _ _) stan@StanGry{..}
+    | aktualnyWidok == WyborPoziomu = return (stan{nazwaPlikuZWynikami = nazwaPlikuZWynikami ++ "ZapisWynikow/wyniki1", aktualnyWidok = WyborStopniaTrudnosci})
+    | aktualnyWidok == WyborStopniaTrudnosci = return (stan{nazwaPlikuZWynikami = nazwaPlikuZWynikami ++ "latwy.txt", aktualnyWidok = Instrukcja}) 
+obslugaWejscia (EventKey (Char '2') Down _ _) stan@StanGry{..}
+    | aktualnyWidok == WyborPoziomu = return (stan{nazwaPlikuZWynikami = nazwaPlikuZWynikami ++ "ZapisWynikow/wyniki2", aktualnyWidok = WyborStopniaTrudnosci})
+    | aktualnyWidok == WyborStopniaTrudnosci = return (stan{nazwaPlikuZWynikami = nazwaPlikuZWynikami ++ "sredni.txt", aktualnyWidok = Instrukcja})  
+obslugaWejscia (EventKey (Char '3') Down _ _) stan@StanGry{..}
+    | aktualnyWidok == WyborPoziomu = return (stan{nazwaPlikuZWynikami = nazwaPlikuZWynikami ++ "ZapisWynikow/wyniki3", aktualnyWidok = WyborStopniaTrudnosci})
+    | aktualnyWidok == WyborStopniaTrudnosci = return (stan{nazwaPlikuZWynikami = nazwaPlikuZWynikami ++ "trudny.txt", aktualnyWidok = Instrukcja})     
+obslugaWejscia (EventKey (Char 'p') Down _ _ ) stan@StanGry{..}
+    | aktualnyWidok == Poziom = return stan {aktualnyWidok = Pauza} 
+    | aktualnyWidok == Pauza = return stan {aktualnyWidok = Poziom}
+    | aktualnyWidok == WprowadzanieNicku  && length nickGracza < 10 = return stan{nickGracza = nickGracza ++ "p"} 
+obslugaWejscia (EventKey (Char 'm') Down _ _ ) stan@StanGry{..}
+    | aktualnyWidok == Poziom || aktualnyWidok == Pauza || aktualnyWidok == KomunikatOWygranej || aktualnyWidok == KomunikatOPrzegranej = return $ stanWejsciaDoMenuKolejnyRaz stan
+    | aktualnyWidok == WprowadzanieNicku  && length nickGracza < 10 = return stan{nickGracza = nickGracza ++ "m"} 
+obslugaWejscia (EventKey (Char 'r') Down _ _ ) stan@StanGry{..}
+    | aktualnyWidok == Poziom|| aktualnyWidok == Pauza || aktualnyWidok == KomunikatOWygranej || aktualnyWidok == KomunikatOPrzegranej = stanZrestartowanejGry stan
+    | aktualnyWidok == WprowadzanieNicku  && length nickGracza < 10 = return stan{nickGracza = nickGracza ++ "r"} 
+obslugaWejscia (EventKey (Char c) Down _ _ ) stan@StanGry{..}
+    | aktualnyWidok == WprowadzanieNicku  && length nickGracza < 10 = return stan{nickGracza = nickGracza ++ [c]}   
 obslugaWejscia _ stan = return stan
-
-
-
---podaj imie
-podajImie :: IO String
-podajImie = do
-    putStrLn "Podaj nick: "
-    nick <- getLine
-    if ' ' `elem` nick
-    then do
-        putStrLn "Nick nie moze zawierac spacji."
-        podajImie
-    else return nick
 
 -- uruchomienie gry
 gra :: IO ()
 gra = do
-    utworzPlikDoZapisuWynikow sciezkaDoWynikow
-    nicki <- wczytajNickiZPlikuZWynikami
-    let nickiStr = getProfileStr 0 nicki
-    putStrLn "Podaj liczbe, zeby wybrac profil"
-    putStrLn "Jesli chcesz stworzyc nowy profil, wpisz '0'"
-    putStrLn nickiStr
-    numerNickuWybranegoPrzezGracza <- getLine
-    let numerNickuInt = if (read numerNickuWybranegoPrzezGracza :: Int) <= length nicki then (read numerNickuWybranegoPrzezGracza :: Int) else 0
-    if numerNickuInt == 0 then do
-        nickgracza <- podajImie
-        stPocz <- stanPoczatkowyGry nickgracza EkranStartowy
-        playIO trybWyswietlania kolorTla fps stPocz narysujGre obslugaWejscia iteracja
-    else do
-        let nickgracza = nicki !! (numerNickuInt - 1)
-        stPocz <- stanPoczatkowyGry nickgracza EkranStartowy
-        playIO trybWyswietlania kolorTla fps stPocz narysujGre obslugaWejscia iteracja
+    tloObrazMaybe <- loadJuicyJPG "background4.jpg"
+    let Just tloObraz = tloObrazMaybe
+    tloMenuMaybe <- loadJuicyJPG "menu.jpg"
+    let Just tloMenu = tloMenuMaybe
+    playIO trybWyswietlania kolorTla fps stanWejsciaDoMenuPierwszyRaz (narysujGre tloObraz tloMenu) obslugaWejscia iteracja
 

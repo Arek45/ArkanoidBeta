@@ -21,10 +21,12 @@ description:         Please see the README on GitHub at <https://github.com/gith
 
 dependencies:
 - base >= 4.7 && < 5
+- QuickCheck >= 2.14 && < 3
 - mtl
 - transformers
+- gloss >= 1.13 && < 3
+- gloss-juicy >= 0.2 && < 0.3
 - containers
-- gloss
 - time
 - random
 - fixed
@@ -57,7 +59,7 @@ executables:
 
 tests:
   ArkanoidProjekt-test:
-    main:                Spec.hs
+    main:                Main.hs
     source-dirs:         test
     ghc-options:
     - -threaded

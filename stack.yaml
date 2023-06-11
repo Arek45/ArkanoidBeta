@@ -44,6 +44,7 @@ extra-deps:
 #- time-1.12@sha256:3628ae73e599c15208ba49b136af41ac4c376c269d2b2831e4583553410c5ed2,6234
 - directory-1.3.7.0@sha256:fa5aa98b70559eb9c26a8c1332a55618876ad825233271142f182c3502e1f23c,2811
 - time-1.11.1.2@sha256:a957467595420495c2dd440d9efa1f58c62277cf9438c7e7a515d7a4c65571ec,6287
+- gloss-juicy-0.2.3
 
 # Override default flag values for local packages and extra-deps
 # flags: {}

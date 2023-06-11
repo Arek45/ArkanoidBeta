@@ -18,6 +18,13 @@ packages:
       size: 7048
   original:
     hackage: time-1.11.1.2@sha256:a957467595420495c2dd440d9efa1f58c62277cf9438c7e7a515d7a4c65571ec,6287
+- completed:
+    hackage: gloss-juicy-0.2.3@sha256:0c3bca95237cbf91f8b3b1936a0661f1e0457acd80502276d54d6c5210f88b25,1618
+    pantry-tree:
+      sha256: 914c08509bc3da4707d90e542b44833ca1a62abc83c2848f87df3d7a7a1d7e03
+      size: 273
+  original:
+    hackage: gloss-juicy-0.2.3
 snapshots:
 - completed:
     sha256: e019cd29e3f7f9dbad500225829a3f7a50f73c674614f2f452e21bb8bf5d99ea

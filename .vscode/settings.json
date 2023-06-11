@@ -1,2 +1,4 @@
 {
+    "haskell.useGhcUp": true,
+    "haskell.ghcPath": "ghcup"
 }
